@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.cristianencarnacion</groupId>
+        <artifactId>cassette4j-parent</artifactId>
+        <version>0.1.0</version>
+    </parent>
+
+    <artifactId>cassette4j-quarkus</artifactId>
+    <name>cassette4j-quarkus</name>
+    <description>Quarkus test resource that points quarkus-langchain4j at the cassette4j proxy.</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.cristianencarnacion</groupId>
+            <artifactId>cassette4j-junit5</artifactId>
+        </dependency>
+        <!-- Provided: the Quarkus application brings its own version -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-test-common</artifactId>
+            <version>${quarkus.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Automatic-Module-Name>io.github.cristianencarnacion.cassette4j.quarkus</Automatic-Module-Name>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

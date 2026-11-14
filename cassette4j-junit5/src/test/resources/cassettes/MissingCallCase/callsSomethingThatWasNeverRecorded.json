@@ -1,0 +1,44 @@
+{
+  "cassette4j": 1,
+  "interactions": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/openai/v1/chat/completions",
+        "json": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Classify this insurance claim in one word: I crashed my car into a wall"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/json",
+        "json": {
+          "id": "chatcmpl-recorded",
+          "object": "chat.completion",
+          "model": "gpt-4o-mini",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "AUTO"
+              },
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 21,
+            "completion_tokens": 1,
+            "total_tokens": 22
+          }
+        }
+      }
+    }
+  ]
+}
