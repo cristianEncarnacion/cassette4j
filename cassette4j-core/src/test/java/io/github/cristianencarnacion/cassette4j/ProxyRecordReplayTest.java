@@ -144,6 +144,32 @@ class ProxyRecordReplayTest {
     }
 
     @Test
+    void matchFieldsCompareOnlyTheChosenFields() throws Exception {
+        Path file = dir.resolve("match.json");
+        String recorded = "{\"model\":\"m\",\"temperature\":0.2,\"messages\":[{\"role\":\"user\",\"content\":\"x\"}]}";
+        String newerClient = "{\"model\":\"m\",\"temperature\":1.0,\"top_p\":1,\"messages\":[{\"role\":\"user\",\"content\":\"x\"}]}";
+        String otherPrompt = "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"y\"}]}";
+        Options opts = Options.defaults().withMatchFields("model", "messages");
+        try (Session s = Cassette4j.insert(file, opts.withMode(Mode.AUTO))) {
+            FakeLlm.chat(recorded);
+        }
+        try (Session s = Cassette4j.insert(file, opts.withMode(Mode.REPLAY))) {
+            assertEquals(200, FakeLlm.chat(newerClient).statusCode(), "extra client defaults must not matter");
+        }
+        Session s = Cassette4j.insert(file, opts.withMode(Mode.REPLAY));
+        assertEquals(404, FakeLlm.chat(otherPrompt).statusCode(), "a different prompt must still miss");
+        assertThrows(AssertionError.class, s::close);
+    }
+
+    @Test
+    void missOnEmptyCassetteShowsTheFullRequest() throws Exception {
+        Session s = Cassette4j.insert(dir.resolve("empty.json"), Options.defaults().withMode(Mode.REPLAY));
+        FakeLlm.chat(FakeLlm.prompt("show me"));
+        AssertionError e = assertThrows(AssertionError.class, s::close);
+        assertTrue(e.getMessage().contains("request:  {\"messages\":[{\"content\":\"show me\""), e.getMessage());
+    }
+
+    @Test
     void secretsNeverReachTheCassette() throws Exception {
         Path file = dir.resolve("secrets.json");
         try (Session s = Cassette4j.insert(file, Options.defaults().withMode(Mode.AUTO))) {

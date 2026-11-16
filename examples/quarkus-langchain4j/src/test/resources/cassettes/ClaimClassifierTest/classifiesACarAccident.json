@@ -1,0 +1,52 @@
+{
+  "cassette4j": 1,
+  "interactions": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/openai/v1/chat/completions",
+        "json": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You classify insurance claims. Answer with exactly one word: AUTO, HOME, HEALTH or OTHER."
+            },
+            {
+              "role": "user",
+              "content": "Classify this claim: I crashed my car into a wall"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/json",
+        "json": {
+          "id": "chatcmpl-cassette4j-example",
+          "object": "chat.completion",
+          "created": 1763251200,
+          "model": "gpt-4o-mini-2024-07-18",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "AUTO",
+                "refusal": null
+              },
+              "logprobs": null,
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 41,
+            "completion_tokens": 1,
+            "total_tokens": 42
+          },
+          "system_fingerprint": "fp_cassette4j"
+        }
+      }
+    }
+  ]
+}

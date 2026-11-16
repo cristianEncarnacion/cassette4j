@@ -18,7 +18,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -119,11 +118,8 @@ final class ProxyServer {
             case "insert" -> {
                 Map<String, Object> req = (Map<String, Object>) Json.parse(
                         new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-                List<String> ignore = new ArrayList<>();
-                Object ig = req.get("ignoreFields");
-                if (ig instanceof List<?> l) {
-                    l.forEach(o -> ignore.add(String.valueOf(o)));
-                }
+                List<String> ignore = strings(req.get("ignoreFields"));
+                List<String> match = strings(req.get("matchFields"));
                 ActiveCassette previous = active;
                 if (previous != null) {
                     previous.save();
@@ -131,7 +127,7 @@ final class ProxyServer {
                 active = new ActiveCassette(
                         Path.of(String.valueOf(req.get("file"))),
                         Mode.valueOf(String.valueOf(req.get("mode"))),
-                        new LinkedHashSet<>(ignore),
+                        MatchRules.of(ignore, match),
                         req.get("upstream") == null ? "" : String.valueOf(req.get("upstream")));
                 respond(ex, 200, "application/json", "{\"ok\":true}");
             }
@@ -147,6 +143,14 @@ final class ProxyServer {
             }
             default -> respondError(ex, 404, "cassette4j_error", "Unknown control action: " + action);
         }
+    }
+
+    private static List<String> strings(Object o) {
+        List<String> out = new ArrayList<>();
+        if (o instanceof List<?> l) {
+            l.forEach(x -> out.add(String.valueOf(x)));
+        }
+        return out;
     }
 
     // ------------------------------------------------------------------ proxy
@@ -168,7 +172,7 @@ final class ProxyServer {
 
         String storedPath = Scrubber.scrub(pathAndQuery);
         Body requestBody = Body.of(requestType, new String(requestBytes, StandardCharsets.UTF_8));
-        String key = method + " " + storedPath + "\n" + requestBody.matchKey(c.ignoreFields);
+        String key = method + " " + storedPath + "\n" + requestBody.matchKey(c.rules);
 
         if (c.mode == Mode.AUTO || c.mode == Mode.REPLAY) {
             Interaction hit = c.take(key);
@@ -273,7 +277,7 @@ final class ProxyServer {
     static final class ActiveCassette {
         final Path file;
         final Mode mode;
-        final Set<String> ignoreFields;
+        final MatchRules rules;
         final String upstream;
 
         private final List<Interaction> loaded;
@@ -285,16 +289,16 @@ final class ProxyServer {
         private int replayed;
         private boolean saved;
 
-        ActiveCassette(Path file, Mode mode, Set<String> ignoreFields, String upstream) {
+        ActiveCassette(Path file, Mode mode, MatchRules rules, String upstream) {
             this.file = file;
             this.mode = mode;
-            this.ignoreFields = ignoreFields;
+            this.rules = rules;
             this.upstream = upstream;
             this.loaded = mode == Mode.RECORD || mode == Mode.PASSTHROUGH
                     ? List.of()
                     : Cassette.load(file).interactions();
             for (Interaction i : loaded) {
-                byKey.computeIfAbsent(i.matchKey(ignoreFields), k -> new ArrayList<>()).add(i);
+                byKey.computeIfAbsent(i.matchKey(rules), k -> new ArrayList<>()).add(i);
             }
         }
 
@@ -336,14 +340,14 @@ final class ProxyServer {
 
         /** Explains why a request did not match, pointing at the closest recorded request. */
         synchronized String describeMiss(String method, String path, Body body) {
-            String wanted = body.matchKey(ignoreFields);
+            String wanted = body.matchKey(rules);
             Interaction closest = null;
             int bestPrefix = -1;
             for (Interaction i : loaded) {
                 if (!i.method().equals(method) || !i.path().equals(path)) {
                     continue;
                 }
-                String have = i.requestBody().matchKey(ignoreFields);
+                String have = i.requestBody().matchKey(rules);
                 int p = commonPrefix(wanted, have);
                 if (p > bestPrefix) {
                     bestPrefix = p;
@@ -355,9 +359,10 @@ final class ProxyServer {
                 sb.append(loaded.isEmpty()
                         ? " - the cassette is empty or does not exist yet."
                         : " - no recorded call uses this method and path.");
+                sb.append("\n    request:  ").append(wanted.length() > 4000 ? wanted.substring(0, 4000) + "..." : wanted);
                 return sb.toString();
             }
-            String have = closest.requestBody().matchKey(ignoreFields);
+            String have = closest.requestBody().matchKey(rules);
             sb.append(" - closest recorded request differs at character ").append(bestPrefix).append(":\n")
                     .append("    recorded: ").append(window(have, bestPrefix)).append('\n')
                     .append("    actual:   ").append(window(wanted, bestPrefix));

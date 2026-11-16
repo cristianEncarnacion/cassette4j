@@ -45,11 +45,14 @@ public class Cassette4jExtension implements BeforeEachCallback, AfterEachCallbac
         List<String> ignore = onMethod != null && onMethod.ignoreFields().length > 0
                 ? List.of(onMethod.ignoreFields())
                 : onClass != null ? List.of(onClass.ignoreFields()) : List.of();
+        List<String> match = onMethod != null && onMethod.matchFields().length > 0
+                ? List.of(onMethod.matchFields())
+                : onClass != null ? List.of(onClass.matchFields()) : List.of();
 
         Path file = Cassette4j.cassetteDir()
                 .resolve(outerMostName(testClass))
                 .resolve(sanitize(name) + ".json");
-        CURRENT.set(Cassette4j.insert(file, new Options(mode, ignore, upstream)));
+        CURRENT.set(Cassette4j.insert(file, new Options(mode, ignore, upstream, match)));
     }
 
     @Override

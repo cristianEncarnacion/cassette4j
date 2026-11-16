@@ -2,7 +2,6 @@ package io.github.cristianencarnacion.cassette4j;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 
 /** One recorded request/response pair. */
 public record Interaction(String method,
@@ -13,8 +12,8 @@ public record Interaction(String method,
                           Body responseBody) {
 
     /** Key used to find the recorded answer for an incoming request. */
-    public String matchKey(Set<String> ignoreFields) {
-        return method + " " + path + "\n" + requestBody.matchKey(ignoreFields);
+    String matchKey(MatchRules rules) {
+        return method + " " + path + "\n" + requestBody.matchKey(rules);
     }
 
     Map<String, Object> toMap() {

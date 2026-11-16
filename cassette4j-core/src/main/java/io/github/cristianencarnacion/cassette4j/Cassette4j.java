@@ -104,6 +104,7 @@ public final class Cassette4j {
         body.put("file", file.toAbsolutePath().normalize().toString());
         body.put("mode", mode.name());
         body.put("ignoreFields", new ArrayList<Object>(options.ignoreFields()));
+        body.put("matchFields", new ArrayList<Object>(options.matchFields()));
         body.put("upstream", options.upstream());
         control("insert", Json.write(body));
         return new Session(file, mode);

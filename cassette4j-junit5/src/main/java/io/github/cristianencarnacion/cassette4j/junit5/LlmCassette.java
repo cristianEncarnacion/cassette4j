@@ -42,6 +42,13 @@ public @interface LlmCassette {
     String[] ignoreFields() default {};
 
     /**
+     * When set, only these top-level JSON fields of the request are compared, e.g.
+     * {@code {"model", "messages"}}. Useful when the client adds defaults (temperature, top_p, ...)
+     * that change between library versions.
+     */
+    String[] matchFields() default {};
+
+    /**
      * Real API for requests whose path does not start with a known alias such as
      * {@code /openai} or {@code /anthropic}. Example: {@code "https://llm.mycompany.com"}.
      */

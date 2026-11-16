@@ -86,9 +86,9 @@ public final class Body {
     }
 
     /** Representation used to compare requests. */
-    public String matchKey(java.util.Set<String> ignoreFields) {
+    String matchKey(MatchRules rules) {
         if (isJson) {
-            return Json.canonical(withoutFields(json, ignoreFields));
+            return Json.canonical(rules.apply(json));
         }
         return toRaw();
     }
