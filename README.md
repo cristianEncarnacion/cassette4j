@@ -19,13 +19,14 @@ void classifiesACarAccident() {
 }
 ```
 
-Python has had this for years (vcrpy, pytest-recording). Java didn't have one that works with every LLM client and framework. Now it does.
+Python and Node.js have had tools like this for years. In Java there was no general-purpose one that works with every LLM client and framework. Now there is.
 
 ## Features
 
 - **Works with any client**: LangChain4j, Spring AI, Quarkus LangChain4j, the official OpenAI/Anthropic SDKs, plain `HttpClient`. If it lets you change the base URL, it works.
 - **Streaming (SSE) and tool calls** are recorded and replayed exactly, event by event.
 - **Audio and file uploads** (text-to-speech, Whisper transcriptions, images) are stored as base64 and replayed byte for byte. Uploads match even though clients pick a new random multipart boundary every time.
+- **Checked against the real OpenAI API every week**: chat, streaming and text-to-speech audio are recorded live and replayed byte for byte.
 - **Tested with the real clients** on every commit: LangChain4j with OpenAI, Anthropic, Gemini and Ollama, and Spring AI 2 with OpenAI, plain and streaming, recorded and replayed without internet or API keys.
 - **Secrets never reach the cassette**: request headers are not stored, and key-shaped strings (`sk-…`, `AIza…`, `?key=…`) are redacted.
 - **Readable, diff-friendly cassettes**: JSON bodies are stored as JSON, streams as a list of events.
@@ -207,6 +208,7 @@ Requests are matched on method, path and body. JSON bodies are compared after so
 
 ## Related
 
+- [RedisVL for Java](https://github.com/redis/redis-vl-java) includes a VCR for the LLM and embedding calls made through RedisVL. cassette4j works with any client.
 - [EasyVCR](https://github.com/EasyPost/easyvcr-java) records generic HTTP for specific Java HTTP clients. cassette4j is LLM-aware (JSON matching, SSE, key redaction) and works with any client through its base URL.
 
 ## License

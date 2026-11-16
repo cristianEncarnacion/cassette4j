@@ -69,6 +69,7 @@ quarkus.langchain4j.openai.api-key=${OPENAI_API_KEY:replay-only}
 - **Cualquier cliente** que te deje cambiar la URL base: LangChain4j, Spring AI, Quarkus LangChain4j, los SDKs oficiales o `HttpClient`.
 - **Streaming y tool calls**, repetidos evento por evento.
 - **Audio y archivos** (texto a voz, transcripciones con Whisper, imágenes): se guardan en base64 y se repiten byte por byte.
+- **Verificado cada semana contra la API real de OpenAI**: chat, streaming y audio se graban en vivo y se repiten byte por byte.
 - **Probado con los clientes reales** en cada cambio: LangChain4j con OpenAI, Anthropic, Gemini y Ollama, y Spring AI 2 con OpenAI, normal y con streaming, sin internet ni API key.
 
 ## Modos
