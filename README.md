@@ -27,7 +27,7 @@ Python has had this for years (vcrpy, pytest-recording). Java didn't have one th
 - **Streaming (SSE) and tool calls** are recorded and replayed byte for byte.
 - **Secrets never reach the cassette**: request headers are not stored, and key-shaped strings (`sk-…`, `AIza…`, `?key=…`) are redacted.
 - **Readable, diff-friendly cassettes**: JSON bodies are stored as JSON, streams as a list of events.
-- **Smart matching**: key order does not matter, and volatile fields (`user`, `seed`, …) can be ignored.
+- **Smart matching**: key order does not matter, volatile fields (`user`, `seed`, …) can be ignored, and `matchFields = {"model", "messages"}` compares only what matters, so client defaults that change between library versions don't break your tests.
 - **Helpful failures**: when a prompt changes, the test fails and shows the closest recorded request and where it differs.
 - **CI-safe by default**: with `CI=true`, cassettes only replay. A missing recording fails the build instead of calling the API.
 - **Zero dependencies** in the core. Java 17+.
@@ -74,6 +74,8 @@ class ClaimClassifierTest {
 # a placeholder key lets replays run without a real key
 quarkus.langchain4j.openai.api-key=${OPENAI_API_KEY:replay-only}
 ```
+
+A complete, CI-tested project lives in [`examples/quarkus-langchain4j`](examples/quarkus-langchain4j): a real `@RegisterAiService` tested against a committed cassette, with no API key.
 
 `Cassette4jTestResource` points `quarkus.langchain4j.openai.base-url` and `quarkus.langchain4j.anthropic.base-url` at the proxy. For other properties, pass init args: `@ResourceArg(name = "quarkus.langchain4j.mistralai.base-url", value = "mistral/v1/")`.
 
@@ -168,6 +170,8 @@ Each test gets `src/test/resources/cassettes/<TestClass>/<testMethod>.json`. Com
   }
 }
 ```
+
+To compare only some top-level fields of the request, use `@LlmCassette(matchFields = {"model", "messages"})`.
 
 Identical requests are answered in the order they were recorded, so agents that call the model several times with the same input work.
 

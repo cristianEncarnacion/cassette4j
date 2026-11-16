@@ -54,6 +54,10 @@ class ClasificadorTest {
 }
 ```
 
+Proyecto completo y probado en CI: [`examples/quarkus-langchain4j`](examples/quarkus-langchain4j).
+
+Para comparar solo lo importante del request y que no rompan los cambios de versión de la librería: `@LlmCassette(matchFields = {"model", "messages"})`.
+
 En `src/test/resources/application.properties`:
 
 ```properties
