@@ -1,9 +1,9 @@
 name: Release to Maven Central
 
-# Push a tag like v0.1.0 to publish that version.
+# Publish a GitHub Release with a tag like v0.1.0 to publish that version to Maven Central.
 on:
-  push:
-    tags: ['v*']
+  release:
+    types: [published]
 
 jobs:
   publish:

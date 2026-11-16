@@ -1,6 +1,6 @@
 # Cómo publicar cassette4j en Maven Central
 
-La publicación es automática: cuando se sube un tag `vX.Y.Z`, GitHub Actions compila, firma y publica.
+La publicación es automática: cuando se publica un Release de GitHub con tag `vX.Y.Z`, GitHub Actions compila, firma y publica.
 Solo hay que preparar la cuenta y 4 secretos una vez.
 
 ## 1. Crear la cuenta en Central (5 minutos)
@@ -53,17 +53,11 @@ Después borra `cassette4j-gpg.asc`.
 
 ## 4. Publicar
 
-Avísale a Claude ("ya están los secretos") y él crea el tag `v0.1.0`. O hazlo tú:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-El workflow **Release to Maven Central** publica la versión. En unos 30 minutos aparece en
+En GitHub ve a **Releases → Draft a new release**, crea el tag `v0.1.0` sobre `main` y dale a **Publish release**.
+El workflow **Release to Maven Central** publica esa versión. En unos 30 minutos aparece en
 https://central.sonatype.com/artifact/io.github.cristianencarnacion/cassette4j-junit5
 
 ## Nuevas versiones
 
 Cambia la versión en los 4 `pom.xml` y en `examples/quarkus-langchain4j/pom.xml`
-(`mvn versions:set -DnewVersion=0.2.0`), haz commit y sube el tag `v0.2.0`.
+(`mvn versions:set -DnewVersion=0.2.0`), haz commit y publica un Release con el tag `v0.2.0`.
