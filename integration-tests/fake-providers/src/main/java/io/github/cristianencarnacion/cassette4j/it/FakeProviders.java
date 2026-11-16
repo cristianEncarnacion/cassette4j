@@ -10,6 +10,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 
 /**
  * One local server that speaks the wire format of OpenAI, Anthropic, Gemini and Ollama, so the
@@ -26,6 +27,9 @@ public final class FakeProviders implements AutoCloseable {
 
     /** Upstream aliases registered with cassette4j for each provider. */
     public static final List<String> ALIASES = List.of("fakeopenai", "fakeanthropic", "fakegemini", "fakeollama");
+
+    private static final Pattern STREAM_TRUE = Pattern.compile("\"stream\"\\s*:\\s*true");
+    private static final Pattern STREAM_FALSE = Pattern.compile("\"stream\"\\s*:\\s*false");
 
     private final HttpServer server;
     private final AtomicInteger hits = new AtomicInteger();
@@ -56,7 +60,8 @@ public final class FakeProviders implements AutoCloseable {
         try {
             String path = ex.getRequestURI().getPath();
             String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            boolean stream = body.contains("\"stream\":true");
+            // Clients differ in JSON spacing ("stream":true vs "stream" : true)
+            boolean stream = STREAM_TRUE.matcher(body).find();
             if (path.endsWith("/chat/completions")) {
                 if (!("Bearer " + OPENAI_KEY).equals(ex.getRequestHeaders().getFirst("Authorization"))) {
                     unauthorized(ex);
@@ -93,7 +98,7 @@ public final class FakeProviders implements AutoCloseable {
                 }
             } else if (path.endsWith("/api/chat")) {
                 hits.incrementAndGet();
-                if (body.contains("\"stream\":false")) {
+                if (STREAM_FALSE.matcher(body).find()) {
                     json(ex, ollama("Hola desde Ollama", true));
                 } else {
                     send(ex, 200, "application/x-ndjson",
