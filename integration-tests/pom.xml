@@ -17,6 +17,16 @@
         <module>spring-ai</module>
     </modules>
 
+    <profiles>
+        <!-- Calls the real OpenAI API. Run with -Plive and OPENAI_API_KEY set (weekly in CI). -->
+        <profile>
+            <id>live</id>
+            <modules>
+                <module>live</module>
+            </modules>
+        </profile>
+    </profiles>
+
     <properties>
         <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

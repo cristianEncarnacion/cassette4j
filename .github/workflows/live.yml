@@ -1,0 +1,39 @@
+name: Live OpenAI check
+
+# Records against the real OpenAI API and replays it, once a week and on demand.
+# Costs a fraction of a cent per run. Needs the OPENAI_API_KEY repository secret.
+on:
+  schedule:
+    - cron: '17 13 * * 1'
+  workflow_dispatch:
+
+jobs:
+  live-openai:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Install cassette4j locally
+        run: mvn -B -ntp install -DskipTests
+      - name: Record against the real API, then replay offline
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then echo "::error::OPENAI_API_KEY secret is not set"; exit 1; fi
+          mvn -B -ntp -f integration-tests -P live -pl live -am verify
+      - name: Show results
+        if: always()
+        run: |
+          grep -rhE "\[live\]|AssertionError|returned [0-9]{3}|Tests run" integration-tests/live/target/surefire-reports/ 2>/dev/null \
+            | head -20 | while IFS= read -r line; do echo "::notice::${line}"; done || true
+      - name: Keep the real cassettes for inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-cassettes
+          path: integration-tests/live/target/live-cassettes/
+          if-no-files-found: ignore
