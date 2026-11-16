@@ -22,6 +22,9 @@ final class FakeLlm implements AutoCloseable {
 
     static final String API_KEY = "sk-test-secret-key-1234567890abcdef";
 
+    /** Fake MP3 bytes: every byte value, so any text conversion would corrupt it. */
+    static final byte[] AUDIO = audio();
+
     final AtomicInteger hits = new AtomicInteger();
     private final HttpServer server;
 
@@ -40,6 +43,20 @@ final class FakeLlm implements AutoCloseable {
             return;
         }
         int n = hits.incrementAndGet();
+        String path = ex.getRequestURI().getPath();
+        if (path.endsWith("/audio/speech")) {
+            sendBytes(ex, 200, "audio/mpeg", AUDIO);
+            return;
+        }
+        if (path.endsWith("/audio/transcriptions")) {
+            String type = ex.getRequestHeaders().getFirst("Content-Type");
+            if (type == null || !type.startsWith("multipart/form-data") || !body.contains("name=\"file\"")) {
+                send(ex, 400, "application/json", "{\"error\":{\"message\":\"expected a multipart upload\"}}");
+                return;
+            }
+            send(ex, 200, "application/json", "{\"text\":\"transcribed " + n + "\"}");
+            return;
+        }
         if (body.contains("\"stream\":true")) {
             String sse = "data: {\"choices\":[{\"delta\":{\"content\":\"Ho\"}}]}\n\n"
                     + "data: {\"choices\":[{\"delta\":{\"content\":\"la\"}}]}\n\n"
@@ -54,8 +71,21 @@ final class FakeLlm implements AutoCloseable {
         send(ex, 200, "application/json", json);
     }
 
+    private static byte[] audio() {
+        byte[] b = new byte[1024];
+        for (int i = 0; i < b.length; i++) {
+            b[i] = (byte) (i * 7);
+        }
+        b[0] = (byte) 0xFF;
+        b[1] = (byte) 0xFB;
+        return b;
+    }
+
     private static void send(HttpExchange ex, int status, String type, String body) throws IOException {
-        byte[] b = body.getBytes(StandardCharsets.UTF_8);
+        sendBytes(ex, status, type, body.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void sendBytes(HttpExchange ex, int status, String type, byte[] b) throws IOException {
         ex.getResponseHeaders().set("Content-Type", type);
         ex.sendResponseHeaders(status, b.length);
         try (OutputStream os = ex.getResponseBody()) {
@@ -84,6 +114,34 @@ final class FakeLlm implements AutoCloseable {
             b.header("Authorization", "Bearer " + API_KEY);
         }
         return CLIENT.send(b.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    static HttpResponse<byte[]> speech(String text) throws Exception {
+        HttpRequest r = HttpRequest.newBuilder(URI.create(Cassette4j.baseUrl() + "/fake/v1/audio/speech"))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + API_KEY)
+                .POST(HttpRequest.BodyPublishers.ofString(
+                        "{\"model\":\"tts-1\",\"voice\":\"alloy\",\"input\":\"" + text + "\"}"))
+                .build();
+        return CLIENT.send(r, HttpResponse.BodyHandlers.ofByteArray());
+    }
+
+    /** Uploads audio like the OpenAI SDKs do: multipart with a new random boundary every time. */
+    static HttpResponse<String> transcribe(byte[] audio) throws Exception {
+        String boundary = "----JavaBoundary" + java.util.UUID.randomUUID();
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        out.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nwhisper-1\r\n")
+                .getBytes(StandardCharsets.UTF_8));
+        out.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.mp3\"\r\n"
+                + "Content-Type: audio/mpeg\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+        out.write(audio);
+        out.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+        HttpRequest r = HttpRequest.newBuilder(URI.create(Cassette4j.baseUrl() + "/fake/v1/audio/transcriptions"))
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .header("Authorization", "Bearer " + API_KEY)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(out.toByteArray()))
+                .build();
+        return CLIENT.send(r, HttpResponse.BodyHandlers.ofString());
     }
 
     static String prompt(String text) {

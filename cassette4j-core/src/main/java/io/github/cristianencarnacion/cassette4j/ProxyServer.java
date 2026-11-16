@@ -14,9 +14,12 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -40,6 +43,9 @@ final class ProxyServer {
 
     static final String ADMIN_PREFIX = "/__cassette4j/";
 
+    /** Header that must carry the per-run secret on every control request. */
+    static final String TOKEN_HEADER = "X-Cassette4j-Token";
+
     /** Request headers that must not be forwarded (hop-by-hop, restricted, or encoding). */
     private static final Set<String> SKIPPED_HEADERS = Set.of(
             "host", "connection", "content-length", "expect", "upgrade", "keep-alive",
@@ -52,11 +58,15 @@ final class ProxyServer {
     private final HttpServer server;
     private final ExecutorService executor;
     private final HttpClient client;
+    private final String token;
     private volatile ActiveCassette active;
 
     private ProxyServer(HttpServer server, ExecutorService executor) {
         this.server = server;
         this.executor = executor;
+        byte[] secret = new byte[32];
+        new SecureRandom().nextBytes(secret);
+        this.token = HexFormat.of().formatHex(secret);
         this.client = HttpClient.newBuilder()
                 .proxy(ProxySelector.getDefault())
                 .connectTimeout(Duration.ofSeconds(30))
@@ -74,13 +84,51 @@ final class ProxyServer {
         ProxyServer proxy = new ProxyServer(http, pool);
         http.createContext("/", proxy::handle);
         http.setExecutor(pool);
-        http.start();
+        startAsDaemon(http);
         Runtime.getRuntime().addShutdownHook(new Thread(proxy::stop, "cassette4j-shutdown"));
         return proxy;
     }
 
+    /**
+     * The JDK server's dispatcher thread inherits the daemon flag of the thread that starts it.
+     * Starting it from a daemon thread keeps the proxy from holding the JVM open when the
+     * program ends.
+     */
+    private static void startAsDaemon(HttpServer http) throws IOException {
+        RuntimeException[] failure = new RuntimeException[1];
+        Thread starter = new Thread(() -> {
+            try {
+                http.start();
+            } catch (RuntimeException e) {
+                failure[0] = e;
+            }
+        }, "cassette4j-start");
+        starter.setDaemon(true);
+        starter.start();
+        try {
+            starter.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while starting the cassette4j proxy", e);
+        }
+        if (failure[0] != null) {
+            throw failure[0];
+        }
+    }
+
     int port() {
         return server.getAddress().getPort();
+    }
+
+    /** Random secret, new on every start, that control requests must present. */
+    String token() {
+        return token;
+    }
+
+    private boolean authorized(HttpExchange ex) {
+        String presented = ex.getRequestHeaders().getFirst(TOKEN_HEADER);
+        return presented != null && MessageDigest.isEqual(
+                presented.getBytes(StandardCharsets.UTF_8), token.getBytes(StandardCharsets.UTF_8));
     }
 
     void stop() {
@@ -113,6 +161,11 @@ final class ProxyServer {
 
     @SuppressWarnings("unchecked")
     private void handleAdmin(HttpExchange ex, String action) throws IOException {
+        if (!"health".equals(action) && !authorized(ex)) {
+            respondError(ex, 403, "cassette4j_forbidden",
+                    "cassette4j: control requests need the token of this test run");
+            return;
+        }
         switch (action) {
             case "health" -> respond(ex, 200, "text/plain", "cassette4j ok");
             case "insert" -> {
@@ -171,13 +224,13 @@ final class ProxyServer {
         }
 
         String storedPath = Scrubber.scrub(pathAndQuery);
-        Body requestBody = Body.of(requestType, new String(requestBytes, StandardCharsets.UTF_8));
+        Body requestBody = Body.of(requestType, requestBytes);
         String key = method + " " + storedPath + "\n" + requestBody.matchKey(c.rules);
 
         if (c.mode == Mode.AUTO || c.mode == Mode.REPLAY) {
             Interaction hit = c.take(key);
             if (hit != null) {
-                respond(ex, hit.status(), hit.contentType(), hit.responseBody().toRaw());
+                respondBody(ex, hit.status(), hit.contentType(), hit.responseBody());
                 return;
             }
             if (c.mode == Mode.REPLAY) {
@@ -212,7 +265,7 @@ final class ProxyServer {
         }
 
         String responseType = upstream.headers().firstValue("Content-Type").orElse(null);
-        String responseText = new String(upstream.body(), StandardCharsets.UTF_8);
+        byte[] responseBytes = upstream.body();
         int status = upstream.statusCode();
 
         if (c.mode != Mode.PASSTHROUGH) {
@@ -221,10 +274,10 @@ final class ProxyServer {
                         + (status == 401 || status == 403 ? " (check your API key)" : ""));
             } else {
                 c.record(key, new Interaction(method, storedPath, requestBody, status, responseType,
-                        Body.of(responseType, responseText)));
+                        Body.of(responseType, responseBytes)));
             }
         }
-        respond(ex, status, responseType, responseText);
+        respondBytes(ex, status, responseType, responseBytes);
     }
 
     private HttpResponse<byte[]> forward(HttpExchange ex, String method, String url, byte[] body)
@@ -247,7 +300,30 @@ final class ProxyServer {
     // ------------------------------------------------------------------ responses
 
     private static void respond(HttpExchange ex, int status, String contentType, String body) throws IOException {
-        byte[] bytes = body == null ? new byte[0] : body.getBytes(StandardCharsets.UTF_8);
+        respondBytes(ex, status, contentType, body == null ? new byte[0] : body.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Replays a recorded body; event streams are sent event by event, like the real API. */
+    private static void respondBody(HttpExchange ex, int status, String contentType, Body body) throws IOException {
+        if (body.events() == null || body.events().isEmpty()) {
+            respondBytes(ex, status, contentType, body.toBytes());
+            return;
+        }
+        if (contentType != null) {
+            ex.getResponseHeaders().set("Content-Type", contentType);
+        }
+        ex.getResponseHeaders().set("X-Cassette4j", "1");
+        ex.getResponseHeaders().set("Cache-Control", "no-cache");
+        ex.sendResponseHeaders(status, 0);
+        try (OutputStream os = ex.getResponseBody()) {
+            for (String event : body.events()) {
+                os.write((event + "\n\n").getBytes(StandardCharsets.UTF_8));
+                os.flush();
+            }
+        }
+    }
+
+    private static void respondBytes(HttpExchange ex, int status, String contentType, byte[] bytes) throws IOException {
         if (contentType != null) {
             ex.getResponseHeaders().set("Content-Type", contentType);
         }

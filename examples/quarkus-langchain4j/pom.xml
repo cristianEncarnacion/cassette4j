@@ -6,7 +6,7 @@
 
     <groupId>io.github.cristianencarnacion.examples</groupId>
     <artifactId>quarkus-langchain4j-example</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
     <name>cassette4j example - Quarkus + LangChain4j</name>
 
     <properties>
@@ -15,7 +15,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <quarkus.platform.version>3.33.2</quarkus.platform.version>
         <quarkus-langchain4j.version>1.15.1</quarkus-langchain4j.version>
-        <cassette4j.version>0.1.0</cassette4j.version>
+        <cassette4j.version>0.2.0</cassette4j.version>
     </properties>
 
     <dependencyManagement>

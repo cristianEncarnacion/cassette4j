@@ -6,7 +6,7 @@
 
     <groupId>io.github.cristianencarnacion</groupId>
     <artifactId>cassette4j-parent</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
     <packaging>pom</packaging>
 
     <name>cassette4j</name>

@@ -24,7 +24,9 @@ Python has had this for years (vcrpy, pytest-recording). Java didn't have one th
 ## Features
 
 - **Works with any client**: LangChain4j, Spring AI, Quarkus LangChain4j, the official OpenAI/Anthropic SDKs, plain `HttpClient`. If it lets you change the base URL, it works.
-- **Streaming (SSE) and tool calls** are recorded and replayed byte for byte.
+- **Streaming (SSE) and tool calls** are recorded and replayed exactly, event by event.
+- **Audio and file uploads** (text-to-speech, Whisper transcriptions, images) are stored as base64 and replayed byte for byte. Uploads match even though clients pick a new random multipart boundary every time.
+- **Tested with the real clients** on every commit: LangChain4j with OpenAI, Anthropic, Gemini and Ollama, and Spring AI 2 with OpenAI, plain and streaming, recorded and replayed without internet or API keys.
 - **Secrets never reach the cassette**: request headers are not stored, and key-shaped strings (`sk-…`, `AIza…`, `?key=…`) are redacted.
 - **Readable, diff-friendly cassettes**: JSON bodies are stored as JSON, streams as a list of events.
 - **Smart matching**: key order does not matter, volatile fields (`user`, `seed`, …) can be ignored, and `matchFields = {"model", "messages"}` compares only what matters, so client defaults that change between library versions don't break your tests.
@@ -39,7 +41,7 @@ Python has had this for years (vcrpy, pytest-recording). Java didn't have one th
 <dependency>
     <groupId>io.github.cristianencarnacion</groupId>
     <artifactId>cassette4j-junit5</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -87,7 +89,8 @@ class SupportBotTest {
 
     @DynamicPropertySource
     static void llm(DynamicPropertyRegistry registry) {
-        registry.add("spring.ai.openai.base-url", () -> Cassette4j.baseUrl("openai"));
+        // Spring AI 2.x: add "/v1". Spring AI 1.x: Cassette4j.baseUrl("openai")
+        registry.add("spring.ai.openai.base-url", () -> Cassette4j.baseUrl("openai") + "/v1");
         registry.add("spring.ai.openai.api-key",
                 () -> System.getenv().getOrDefault("OPENAI_API_KEY", "replay-only"));
     }
@@ -171,6 +174,8 @@ Each test gets `src/test/resources/cassettes/<TestClass>/<testMethod>.json`. Com
 }
 ```
 
+Streams are stored as a list of events (`"events"`), other text as `"text"`, and binary content such as audio as `"base64"`.
+
 To compare only some top-level fields of the request, use `@LlmCassette(matchFields = {"model", "messages"})`.
 
 Identical requests are answered in the order they were recorded, so agents that call the model several times with the same input work.
@@ -190,14 +195,14 @@ What is never recorded: request headers, responses with status 401/403/407/429 o
 
 ## How it works
 
-`Cassette4j.baseUrl()` starts an HTTP server on `127.0.0.1` (once per JVM). `@LlmCassette` tells it which cassette to use through a small control endpoint. Because control happens over HTTP, it works even when Quarkus or Spring load your tests in a different class loader.
+`Cassette4j.baseUrl()` starts an HTTP server on `127.0.0.1` (once per JVM), so nothing outside your machine can reach it. `@LlmCassette` tells it which cassette to use through a small control endpoint. Because control happens over HTTP, it works even when Quarkus or Spring load your tests in a different class loader. The control endpoint only accepts requests that carry a random token created when the proxy starts, so other programs on your machine cannot switch or overwrite cassettes.
 
 Requests are matched on method, path and body. JSON bodies are compared after sorting keys and removing ignored fields.
 
-## Limitations (0.1.0)
+## Limitations (0.2.0)
 
 - Tests that call the LLM must not run in parallel inside the same JVM (one cassette is active at a time).
-- Streams are replayed in one go, not chunk by chunk with the original timing.
+- Streams are replayed event by event but as fast as possible, without the original timing. While recording, the client receives the stream once the real API has finished it.
 - WebSocket / realtime APIs are not supported.
 
 ## Related

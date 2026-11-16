@@ -38,6 +38,12 @@ public final class Cassette4j {
     /** JVM-wide system property holding the port of the running proxy (set by cassette4j). */
     public static final String PORT_PROPERTY = "cassette4j.internal.port";
 
+    /**
+     * JVM-wide system property holding the random secret of the running proxy (set by cassette4j).
+     * Control requests must present it, so other programs on the machine cannot swap cassettes.
+     */
+    public static final String TOKEN_PROPERTY = "cassette4j.internal.token";
+
     /** Optional fixed port for the proxy (default: a free port). */
     public static final String FIXED_PORT_PROPERTY = "cassette4j.port";
 
@@ -65,6 +71,7 @@ public final class Cassette4j {
             try {
                 int fixed = Integer.parseInt(System.getProperty(FIXED_PORT_PROPERTY, "0"));
                 localServer = ProxyServer.start(fixed);
+                System.setProperty(TOKEN_PROPERTY, localServer.token());
                 System.setProperty(PORT_PROPERTY, Integer.toString(localServer.port()));
                 return localServer.port();
             } catch (IOException e) {
@@ -152,6 +159,7 @@ public final class Cassette4j {
             HttpURLConnection c = open(port, action, "POST");
             c.setDoOutput(true);
             c.setRequestProperty("Content-Type", "application/json");
+            c.setRequestProperty(ProxyServer.TOKEN_HEADER, System.getProperty(TOKEN_PROPERTY, ""));
             try (OutputStream os = c.getOutputStream()) {
                 os.write(json.getBytes(StandardCharsets.UTF_8));
             }

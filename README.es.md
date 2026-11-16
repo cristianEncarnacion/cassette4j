@@ -29,7 +29,7 @@ void clasificaUnChoque() {
 <dependency>
     <groupId>io.github.cristianencarnacion</groupId>
     <artifactId>cassette4j-junit5</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -64,6 +64,13 @@ En `src/test/resources/application.properties`:
 quarkus.langchain4j.openai.api-key=${OPENAI_API_KEY:replay-only}
 ```
 
+## Qué soporta
+
+- **Cualquier cliente** que te deje cambiar la URL base: LangChain4j, Spring AI, Quarkus LangChain4j, los SDKs oficiales o `HttpClient`.
+- **Streaming y tool calls**, repetidos evento por evento.
+- **Audio y archivos** (texto a voz, transcripciones con Whisper, imágenes): se guardan en base64 y se repiten byte por byte.
+- **Probado con los clientes reales** en cada cambio: LangChain4j con OpenAI, Anthropic, Gemini y Ollama, y Spring AI 2 con OpenAI, normal y con streaming, sin internet ni API key.
+
 ## Modos
 
 | Modo | Qué hace | Cuándo |
@@ -82,5 +89,13 @@ OPENAI_API_KEY=sk-... mvn test -Dcassette4j.mode=RECORD
 ## Seguridad
 
 Los headers (donde va la API key) nunca se guardan, y cualquier texto con forma de llave (`sk-…`, `AIza…`, `?key=…`) se reemplaza por `<redacted>`.
+
+El proxy solo escucha en tu máquina (`127.0.0.1`), y su canal de control exige un token aleatorio que se crea cada vez que arrancan los tests, así que otros programas no pueden cambiar ni sobrescribir tus grabaciones.
+
+## Limitaciones (0.2.0)
+
+- Los tests que llaman al LLM no pueden correr en paralelo dentro de la misma JVM.
+- El streaming se repite evento por evento pero sin los tiempos originales. Mientras graba, el cliente recibe el stream cuando la API real termina.
+- No soporta WebSocket ni APIs realtime.
 
 La documentación completa (Spring AI, LangChain4j, proveedores, configuración) está en el [README en inglés](README.md).

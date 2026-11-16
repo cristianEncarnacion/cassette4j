@@ -8,6 +8,7 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -264,5 +265,97 @@ class ProxyRecordReplayTest {
             assertEquals(200, FakeLlm.post("/v1/chat/completions", FakeLlm.prompt("plain"), true).statusCode());
         }
         assertEquals(1, llm.hits.get());
+    }
+
+    @Test
+    void binaryAudioIsReplayedByteForByte() throws Exception {
+        Path file = dir.resolve("speech.json");
+        try (Session s = Cassette4j.insert(file, Options.defaults().withMode(Mode.RECORD))) {
+            HttpResponse<byte[]> r = FakeLlm.speech("Hola");
+            assertEquals(200, r.statusCode());
+            assertArrayEquals(FakeLlm.AUDIO, r.body());
+        }
+        String stored = Files.readString(file);
+        assertTrue(stored.contains("\"base64\""), stored);
+
+        try (Session s = Cassette4j.insert(file, Options.defaults().withMode(Mode.REPLAY))) {
+            HttpResponse<byte[]> r = FakeLlm.speech("Hola");
+            assertEquals(200, r.statusCode());
+            assertEquals("audio/mpeg", r.headers().firstValue("Content-Type").orElse(""));
+            assertArrayEquals(FakeLlm.AUDIO, r.body());
+        }
+        assertEquals(1, llm.hits.get());
+    }
+
+    @Test
+    void fileUploadsMatchEvenWithANewRandomBoundary() throws Exception {
+        Path file = dir.resolve("transcription.json");
+        try (Session s = Cassette4j.insert(file, Options.defaults().withMode(Mode.RECORD))) {
+            HttpResponse<String> r = FakeLlm.transcribe(FakeLlm.AUDIO);
+            assertEquals(200, r.statusCode(), r.body());
+        }
+        try (Session s = Cassette4j.insert(file, Options.defaults().withMode(Mode.REPLAY))) {
+            HttpResponse<String> r = FakeLlm.transcribe(FakeLlm.AUDIO);
+            assertEquals(200, r.statusCode(), r.body());
+            assertTrue(r.body().contains("transcribed 1"), r.body());
+        }
+        assertEquals(1, llm.hits.get());
+    }
+
+    @Test
+    void aDifferentUploadIsAMiss() throws Exception {
+        Path file = dir.resolve("transcription-miss.json");
+        try (Session s = Cassette4j.insert(file, Options.defaults().withMode(Mode.RECORD))) {
+            assertEquals(200, FakeLlm.transcribe(FakeLlm.AUDIO).statusCode());
+        }
+        byte[] other = FakeLlm.AUDIO.clone();
+        other[500] ^= 1;
+        Session s = Cassette4j.insert(file, Options.defaults().withMode(Mode.REPLAY));
+        assertEquals(404, FakeLlm.transcribe(other).statusCode());
+        assertThrows(AssertionError.class, s::close);
+    }
+
+    @Test
+    void controlChannelRejectsRequestsWithoutTheRunToken() throws Exception {
+        Cassette4j.port();
+        for (String token : new String[] {null, "wrong", ""}) {
+            java.net.http.HttpRequest.Builder b = java.net.http.HttpRequest.newBuilder(
+                            java.net.URI.create(Cassette4j.baseUrl() + "/__cassette4j/insert"))
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                            "{\"file\":\"/tmp/evil.json\",\"mode\":\"RECORD\"}"));
+            if (token != null) {
+                b.header("X-Cassette4j-Token", token);
+            }
+            HttpResponse<String> r = FakeLlm.CLIENT.send(b.build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(403, r.statusCode(), r.body());
+        }
+        HttpResponse<String> eject = FakeLlm.CLIENT.send(java.net.http.HttpRequest.newBuilder(
+                        java.net.URI.create(Cassette4j.baseUrl() + "/__cassette4j/eject"))
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString("{}")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertEquals(403, eject.statusCode());
+        assertFalse(System.getProperty(Cassette4j.TOKEN_PROPERTY, "").isEmpty());
+    }
+
+    @Test
+    void streamingIsReplayedEventByEvent() throws Exception {
+        Path file = dir.resolve("stream-chunks.json");
+        String body = "{\"model\":\"gpt-4o-mini\",\"stream\":true,\"messages\":[]}";
+        try (Session s = Cassette4j.insert(file, Options.defaults().withMode(Mode.RECORD))) {
+            assertEquals(200, FakeLlm.chat(body).statusCode());
+        }
+        try (Session s = Cassette4j.insert(file, Options.defaults().withMode(Mode.REPLAY))) {
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder(
+                            java.net.URI.create(Cassette4j.baseUrl() + "/fake/v1/chat/completions"))
+                    .header("Content-Type", "application/json")
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body)).build();
+            HttpResponse<java.util.stream.Stream<String>> r =
+                    FakeLlm.CLIENT.send(req, HttpResponse.BodyHandlers.ofLines());
+            assertEquals(200, r.statusCode());
+            assertTrue(r.headers().firstValue("Content-Length").isEmpty(), "stream must be chunked");
+            java.util.List<String> data = r.body().filter(l -> l.startsWith("data:")).toList();
+            assertEquals(3, data.size(), data.toString());
+            assertEquals("data: [DONE]", data.get(2));
+        }
     }
 }
